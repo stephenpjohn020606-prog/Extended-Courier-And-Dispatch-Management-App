@@ -95,4 +95,100 @@ Added the Delivery Failed button to the action bar, added 'Returned to Sender' a
     "Cannot Fail", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        int Nextattempt = C.Get
+        int Nextattempt = C.Getdeliveryattempts() + 1;
+        int Confirm = JOptionPane.showConfirmDialog(
+            this,
+            "Record failed delivery attempt (" + Nextattempt + "/" + Courier.MAX_ATTEMPTS + ") for " +
+    C.Getcourierid() + "?\n(Receiver not present / unreachable)",
+            "Confirm Failed Attempt",
+            JOptionPane.YES_NO_OPTION
+        );
+        if (Confirm == JOptionPane.YES_OPTION) {
+            try {
+                Courier Updated = Db.Recordfailedattempt(C.Getcourierid());
+                if (Updated.Getstatus() == CourierStatus.RETURNED_TO_SENDER) {
+                    JOptionPane.showMessageDialog(this, "Max attempts reached (" + Courier.MAX_ATTEMPTS +
+    "/" + Courier.MAX_ATTEMPTS + ").\nCourier " + Updated.Getcourierid() + " returned back to sender!",
+    "Returned to Sender", JOptionPane.WARNING_MESSAGE);
+                } else {
+                    JOptionPane.showMessageDialog(this, "Delivery attempt " + Updated.Getdeliveryattempts() + "
+    of " + Courier.MAX_ATTEMPTS + " recorded.\nCourier remains Dispatched.");
+                }
+                Dashboard.Refreshalldata();
+            } catch (Exception Ex) {
+                JOptionPane.showMessageDialog(this, "Error: " + Ex.getMessage(), "Error",
+    JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+### CourierDetailsDialog.java
+
+Updated the Courier Information grid in the detail dialog to display the delivery attempt count when user inspect a courier.
+
+    JPanel P1 = new JPanel(new GridLayout(5, 2, 8, 4));
+    P1.setBorder(BorderFactory.createTitledBorder("Courier Information"));
+    P1.add(new JLabel("Courier ID:")); P1.add(new JLabel(C.Getcourierid()));
+    P1.add(new JLabel("Courier Type:")); P1.add(new JLabel(C.Getcouriertype() + " (" +
+    C.Getprioritylevel() + ")"));
+    P1.add(new JLabel("Current Status:")); P1.add(new
+    JLabel(C.Getstatus().Getdisplayname()));
+    P1.add(new JLabel("Delivery Attempts:")); P1.add(new JLabel(C.Getdeliveryattempts() + " / 
+    " + Courier.MAX_ATTEMPTS));
+    P1.add(new JLabel("Booking Date:")); P1.add(new JLabel(C.Getbookingdate()));
+
+## Database Changes
+
+The database layer in DBManager.java was updated to support storage and retrieval of delivery attempts
+
+A new integer column named delivery_attempts has been added to the couriers table with a default value of 0.
+
+**Table Schema Definition:**
+
+    CREATE TABLE IF NOT EXISTS couriers (
+        courier_id VARCHAR(50) PRIMARY KEY,
+        courier_type VARCHAR(50) NOT NULL,
+        sender_id INT NOT NULL,
+        receiver_id INT NOT NULL,
+        destination_address TEXT NOT NULL,
+        destination_city VARCHAR(100) NOT NULL,
+        weight DOUBLE NOT NULL,
+        parcel_type VARCHAR(100) NOT NULL,
+        booking_date VARCHAR(50) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        storage_location_id INT,
+        delivery_charge DOUBLE NOT NULL,
+        delivery_attempts INT NOT NULL DEFAULT 0,
+        extra_info TEXT,
+        FOREIGN KEY (sender_id) REFERENCES customers(customer_id),
+        FOREIGN KEY (receiver_id) REFERENCES customers(customer_id),
+        FOREIGN KEY (storage_location_id) REFERENCES storage_locations(location_id) ON DELETE
+    SET NULL
+    );
+
+## Update Logic in DBManager.java
+
+**Dedicated Update Method:**
+
+Recordfailedattempt(String Courierid) handles incrementing and status updating in the database
+
+    public Courier Recordfailedattempt(String Courierid)
+            throws CourierNotFoundException, InvalidStatusTransitionException,
+    DatabaseOperationException {
+        Courier C = Getcourierbyid(Courierid);
+        C.Recordfailedattempt();
+        try {
+            Connection Conn = Getconnection();
+            try (PreparedStatement Pstmt = Conn.prepareStatement(
+                    "UPDATE couriers SET delivery_attempts = ?, status = ? WHERE courier_id = ?")) {
+                Pstmt.setInt(1, C.Getdeliveryattempts());
+                Pstmt.setString(2, C.Getstatus().Getdisplayname());
+                Pstmt.setString(3, Courierid);
+                Pstmt.executeUpdate();
+            }
+        } catch (Exception E) {
+            throw new DatabaseOperationException("Failed to record delivery attempt: " +
+    E.getMessage(), E);
+        }
+        return C;
+    }
