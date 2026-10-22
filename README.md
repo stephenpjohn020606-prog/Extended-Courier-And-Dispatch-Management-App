@@ -1,4 +1,4 @@
-# Implementation Report: Delivery Attempt Tracking And Return to Sender
+# Implementation Of Delivery Attempt Tracking And Return to Sender
 
 ## Requirements
 
